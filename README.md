@@ -5,6 +5,8 @@ A text annotation tool for translating and annotating entity alignments
 Pip install requirements:
 ```
 conda create -n qt5 python=3.8
+conda activate qt5
+
 git clone https://github.com/danovw/annotate_translation.git
 cd annotate_translation
 pip install -r requirements.txt
