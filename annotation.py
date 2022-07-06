@@ -1,3 +1,5 @@
+import ast
+import ipdb
 import sys
 import os
 
@@ -27,8 +29,18 @@ class WorkThread(QThread):
             output.to_csv(os.path.join('./output', output_filename), sep='\t', encoding='utf-8')
 
 
+def normalize_entity(entity):
+    if len(entity) == 0:
+        return entity
+    while len(entity) > 0 and entity[-1] in ',.;:!?':
+        entity = entity[:-1]
+    return entity
+
+
 def selectedText_is_consecutive_words(select_text, origin_text, char_start_idx, char_end_idx):
-    words = origin_text.split(' ')
+    #breakpoint()
+    # Yes | Yes, this hospital does have 3.0T MRI equipment. | 0 | 3
+    words = [normalize_entity(e) for e in origin_text.lower().split(' ')]
     select_text_2 = select_text.strip()
     # char idx changed, ignore space
     if select_text_2 != select_text:
@@ -36,8 +48,7 @@ def selectedText_is_consecutive_words(select_text, origin_text, char_start_idx, 
         right_len = len(select_text) - left_len - len(select_text_2)
         char_start_idx = char_start_idx + left_len
         char_end_idx = char_end_idx - right_len
-        
-    select_words = select_text_2.split(' ')
+    select_words = [normalize_entity(e) for e in select_text_2.lower().split(' ')]
     # Get all possible consecutive words whose length is equal to the length of select_words
     for i in range(len(words) - len(select_words) + 1):
         if words[i:i+len(select_words)] == select_words:
@@ -72,7 +83,7 @@ class MainDialog(QWidget):
         self.box3 = QMessageBox(QMessageBox.Warning, 'warn', 'Please add a Source entity first')
         self.box4 = QMessageBox(QMessageBox.Warning, 'warn', 'Please add an Target entity first')
         self.box5 = QMessageBox(QMessageBox.Warning, 'warn', 'Please make true the selected text is consecutive words!')
-    
+
 
     def read_file(self):
         # init
@@ -96,7 +107,7 @@ class MainDialog(QWidget):
                             'source_span', 'target_span', 'dialogue_id', 'turn_id', 'utterance_type', \
                             'source_word_span', 'target_word_span'])
         self.write_output = WorkThread()
-        
+
         # choose file
         fileName_choose, filetype = QFileDialog.getOpenFileName(self, "choose file",
                                                                 self.cwd,
@@ -163,41 +174,77 @@ class MainDialog(QWidget):
                 tmp_target_text = item['target'] if str(item['target']) != 'nan' else ''
                 self.target_texts.append(tmp_target_text)
                 if i == 0:
-                    self.source_entities[0] = json.loads(item['source_entity'].replace("'", '"'))
-                    self.target_entities[0] = json.loads(item['target_entity'].replace("'", '"'))
-                    self.source_spans[0] = json.loads(item['source_span'])
-                    self.target_spans[0] = json.loads(item['target_span'])
+                    self.source_entities[0] = ast.literal_eval(item['source_entity'])
+                    self.target_entities[0] = ast.literal_eval(item['target_entity'])
+                    self.source_spans[0] = ast.literal_eval(item['source_span'])
+                    self.target_spans[0] = ast.literal_eval(item['target_span'])
                     for span_i in range(len(self.source_spans[0])):
                         source_span = self.source_spans[0][span_i]
                         result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
                                     self.source_entities[0][span_i], self.source_texts[0], source_span[0], source_span[1])
-                        assert result == True
-                        self.source_word_spans[0].append([word_start_idx, word_end_idx])
+                        if result:
+                            self.source_word_spans[0].append([word_start_idx, word_end_idx])
+                        else:
+                            print(f"selectedText is NOT consecutive_words: "
+                                  f"{self.source_entities[0][span_i]} | "
+                                  f"{self.source_texts[0]} | "
+                                  f"{source_span[0]} | {source_span[1]}",
+                                  file=sys.stderr)
+                            self.source_word_spans[0].append([0, 0])
                     for span_i in range(len(self.target_spans[0])):
                         target_span = self.target_spans[0][span_i]
                         result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
                                     self.target_entities[0][span_i], self.target_texts[0], target_span[0], target_span[1])
-                        assert result == True
-                        self.target_word_spans[0].append([word_start_idx, word_end_idx])
+                        if result:
+                            self.target_word_spans[0].append([word_start_idx, word_end_idx])
+                        else:
+                            print(f"selectedText is NOT consecutive_words: "
+                                  f"{self.target_entities[0][span_i]} | "
+                                  f"{self.target_texts[0]} | "
+                                  f"{target_span[0]} | {target_span[1]}",
+                                  file=sys.stderr)
+                            self.target_word_spans[0].append([0, 0])
                 else:
-                    self.source_entities.append(json.loads(item['source_entity'].replace("'", '"')))
-                    self.target_entities.append(json.loads(item['target_entity'].replace("'", '"')))
-                    self.source_spans.append(json.loads(item['source_span']))
-                    self.target_spans.append(json.loads(item['target_span']))
+                    try:
+                        self.source_entities.append(ast.literal_eval(item['source_entity'])) # .replace("'", '\\"')))
+                        self.target_entities.append(ast.literal_eval(item['target_entity']))  # .replace("'", '\\"')))
+                        self.source_spans.append(ast.literal_eval(item['source_span']))
+                        self.target_spans.append(ast.literal_eval(item['target_span']))
+                    except json.decoder.JSONDecodeError as e:
+                        print(f"JSONDecodeError loading {item}", file=sys.stderr)
+                        ipdb.post_mortem()
                     self.source_word_spans.append([])
                     self.target_word_spans.append([])
-                    for span_i in range(len(self.source_spans[i])):
-                        source_span = self.source_spans[i][span_i]
-                        result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
-                                    self.source_entities[i][span_i], self.source_texts[i], source_span[0], source_span[1])
-                        assert result == True
-                        self.source_word_spans[i].append([word_start_idx, word_end_idx])
-                    for span_i in range(len(self.target_spans[i])):
-                        target_span = self.target_spans[i][span_i]
-                        result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
-                                    self.target_entities[i][span_i], self.target_texts[i], target_span[0], target_span[1])
-                        assert result == True
-                        self.target_word_spans[i].append([word_start_idx, word_end_idx])
+                    try:
+                        for span_i in range(len(self.source_spans[i])):
+                            source_span = self.source_spans[i][span_i]
+                            result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
+                                        self.source_entities[i][span_i], self.source_texts[i], source_span[0], source_span[1])
+                            if result:
+                                self.source_word_spans[i].append([word_start_idx, word_end_idx])
+                            else:
+                                print(f"selectedText is NOT consecutive_words: "
+                                    f"{self.source_entities[i][span_i]} | "
+                                    f"{self.source_texts[i]} | "
+                                    f"{source_span[0]} | {source_span[1]}",
+                                    file=sys.stderr)
+                                self.source_word_spans[i].append([0, 0])
+                        for span_i in range(len(self.target_spans[i])):
+                            target_span = self.target_spans[i][span_i]
+                            result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
+                                        self.target_entities[i][span_i], self.target_texts[i], target_span[0], target_span[1])
+                            if result:
+                                self.target_word_spans[i].append([word_start_idx, word_end_idx])
+                            else:
+                                print(f"selectedText is NOT consecutive_words: "
+                                    f"{self.target_entities[i][span_i]} | "
+                                    f"{self.target_texts[i]} | "
+                                    f"{target_span[0]} | {target_span[1]}",
+                                    file=sys.stderr)
+                                self.target_word_spans[i].append([0, 0])
+                    except Exception as e:
+                        ipdb.post_mortem()
+
                 output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
                             self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
                             self.source_spans[self.cur_index], self.target_spans[self.cur_index], \
@@ -237,7 +284,7 @@ class MainDialog(QWidget):
             self.ui.source_entity.clear()
             self.ui.target_entity.clear()
             self.ui.id.setText(str(self.cur_index+1)+' / '+str(len(self.source_texts)))
-    
+
     def change_span_style(self, text, spans): # spans为二维数组
         # print(spans)
         # 将spans转成元组后再去重
@@ -278,12 +325,12 @@ class MainDialog(QWidget):
             text = text[:start] + '<u><b>' + text[start:end] + '</u></i>' + text[end:]
             increased_index += len('<u><b></b></u>')
         return text
-    
+
     def add_source_entity(self):
         if len(self.target_entities[self.cur_index]) == len(self.source_entities[self.cur_index]):
             tc = self.ui.source.textCursor()
             if tc.selectedText() != '':
-                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(), 
+                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(),
                                                     self.source_texts[self.cur_index], tc.selectionStart(), tc.selectionEnd())
                 if result:
                     # change color
@@ -301,12 +348,12 @@ class MainDialog(QWidget):
                     self.box5.show()
         else:
             self.box4.show()
-    
+
     def add_target_entity(self):
         if len(self.target_entities[self.cur_index]) == len(self.source_entities[self.cur_index])-1:
             tc = self.ui.target.textCursor()
             if tc.selectedText() != '':
-                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(), 
+                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(),
                                                     self.ui.target.toPlainText(), tc.selectionStart(), tc.selectionEnd())
                 if result:
                     color_format = QTextCharFormat(tc.charFormat())
@@ -341,7 +388,7 @@ class MainDialog(QWidget):
             self.ui.target.setText(self.ui.target.toPlainText())
             self.ui.source_entity.clear()
             self.ui.target_entity.clear()
-    
+
 
     def previous_item(self):
         if self.cur_index == 0:
@@ -352,7 +399,7 @@ class MainDialog(QWidget):
                 self.target_texts.append(self.ui.target.toPlainText())
             else:
                 self.target_texts[self.cur_index] = self.ui.target.toPlainText()
-            
+
             if self.ui.source_entity.toPlainText() != '':
                 # try:
                 #     assert len(self.target_texts) == len(self.source_entities) \
@@ -395,7 +442,7 @@ class MainDialog(QWidget):
             for i in range(len(old_data['target_entity'])):
                 display_target_text += old_data['target_entity'][i] + '  -  ' + str(old_data['target_word_span'][i]) + '\n'
             self.ui.target_entity.setText(display_target_text)
-    
+
     def reset_item(self):
         self.ui.source.setTextColor(Qt.black)
         self.ui.target.setTextColor(Qt.black)
@@ -422,7 +469,7 @@ class MainDialog(QWidget):
                 self.target_texts.append(self.ui.target.toPlainText())
             else:
                 self.target_texts[self.cur_index] = self.ui.target.toPlainText()
-            
+
             if self.ui.source_entity.toPlainText() != '':
                 output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
                             self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
