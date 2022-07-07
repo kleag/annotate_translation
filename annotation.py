@@ -71,7 +71,46 @@ def change_word_to_char_highlight(texts, word_highlight):
             char_highlight[i].append([char_start_idx, char_end_idx])
     return char_highlight
 
+
 class MainDialog(QWidget):
+    """
+    The main class, holding all application data. It is also the main window of the
+    application.
+
+    ...
+
+    Attributes
+    ----------
+    source_word_spans : [ [ [int, int], … ], … ]
+        a list of lists of pairs of token numbers. For each utterance, the list of its
+        token spans that define entities. Initialized from the csv file.
+    source_word_highlight :  [ [ [int, int], … ], … ]
+        a list of lists of pairs of token numbers. For each utterance, the list of its
+        token spans that should be highlighted. Initialized from the json input.
+        ex.: [[[9, 12]], [[2, 5]], [[6, 7], [1, 4]], …];
+    source_highlight : [ [ [int, int], … ], … ]
+        a list of lists of pairs of character positions. For each utterance, the list of
+        its character spans that should be highlighted. It is computed from
+        source_word_highlight
+        ex.: [[[46, 64]], [[11, 28]], [[29, 35], [2, 19]], …]
+    target_word_spans : [ [ [int, int], … ], … ]
+        a list of lists of pairs of token numbers. For each translated utterance, the
+        list of its token spans that define entities. Initialized from the csv file.
+    target_word_highlight : [ [ [int, int], … ], … ]
+        a list of lists of pairs of token numbers. For each translated utterance, the
+        list of its token spans that should be highlighted. To be filled from
+        target_word_spans after loading the csv file
+        ex.: [[[9, 12]], [[2, 5]], [[6, 7], [1, 4]], …];
+    target_highlight : [ [ [int, int], … ], … ]
+        a list of lists of pairs of character positions. For each translated utterance,
+        the list of its character spans that should be highlighted. It is computed from
+        target_word_highlight
+        ex.: [[[46, 64]], [[11, 28]], [[29, 35], [2, 19]], …]
+
+    Methods
+    -------
+    """
+
     def __init__(self, parent=None):
         super(MainDialog, self).__init__(parent)
         self.ui = Ui_annotation.Ui_Form()
@@ -84,29 +123,14 @@ class MainDialog(QWidget):
         self.box4 = QMessageBox(QMessageBox.Warning, 'warn', 'Please add an Target entity first')
         self.box5 = QMessageBox(QMessageBox.Warning, 'warn', 'Please make true the selected text is consecutive words!')
 
-
     def read_file(self):
         # init
         self.source_texts = []
         self.target_texts = []
-        # source_highlight: a list of lists of pairs of character positions. For each
-        # utterance, the list of its character spans that should be highlighted. It is
-        # computed from source_word_highlight
-        # [[[46, 64]], [[11, 28]], [[29, 35], [2, 19]], …]
         self.source_highlight = []
-        # source_word_highlight: a list of lists of pairs of token numbers. For each
-        # utterance, the list of its token spans that should be highlighted
-        # [[[9, 12]], [[2, 5]], [[6, 7], [1, 4]], …];
         self.source_word_highlight = [] # 3 dimension，用于高亮需要本地化的实体
         self.source_entities = [] # 嵌套列表 - Nested List
-        # target_highlight: a list of lists of pairs of character positions. For each
-        # translated utterance, the list of its character spans that should be
-        # highlighted. It is computed from target_word_highlight
-        # [[[46, 64]], [[11, 28]], [[29, 35], [2, 19]], …]
         self.target_highlight = []
-        # target_word_highlight: a list of lists of pairs of token numbers. For each
-        # translated utterance, the list of its token spans that should be highlighted
-        # [[[9, 12]], [[2, 5]], [[6, 7], [1, 4]], …];
         self.target_word_highlight = [] # 3 dimension，突出显示已经定位的实体
         self.target_entities = [] # 嵌套列表 - Nested List
         self.source_spans = []
@@ -233,9 +257,6 @@ class MainDialog(QWidget):
             self.ui.id.setText(str(self.cur_index+1)+' / '+str(len(self.source_texts)))
 
     def load_csv_data(self, annotation):
-        print(f"load_csv_data source_entities length: {len(self.source_entities)}",
-              file=sys.stderr)
-
         for i in range(len(annotation)):
             item = annotation.iloc[i]
             tmp_target_text = item['target'] if str(item['target']) != 'nan' else ''
@@ -246,32 +267,11 @@ class MainDialog(QWidget):
             self.target_spans.append(ast.literal_eval(item['target_span']))
             self.source_word_spans.append([])
             self.target_word_spans.append([])
-            for span_i in range(len(self.source_spans[i])):
-                source_span = self.source_spans[i][span_i]
-                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
-                            self.source_entities[i][span_i], self.source_texts[i], source_span[0], source_span[1])
-                if result:
-                    self.source_word_spans[i].append([word_start_idx, word_end_idx])
-                else:
-                    print(f"selectedText is NOT consecutive_words: "
-                            f"{self.source_entities[i][span_i]} | "
-                            f"{self.source_texts[i]} | "
-                            f"{source_span[0]} | {source_span[1]}",
-                            file=sys.stderr)
-                    self.source_word_spans[i].append([0, 0])
-            for span_i in range(len(self.target_spans[i])):
-                target_span = self.target_spans[i][span_i]
-                result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
-                            self.target_entities[i][span_i], self.target_texts[i], target_span[0], target_span[1])
-                if result:
-                    self.target_word_spans[i].append([word_start_idx, word_end_idx])
-                else:
-                    print(f"selectedText is NOT consecutive_words: "
-                            f"{self.target_entities[i][span_i]} | "
-                            f"{self.target_texts[i]} | "
-                            f"{target_span[0]} | {target_span[1]}",
-                            file=sys.stderr)
-                    self.target_word_spans[i].append([0, 0])
+            self.get_word_spans(i, self.source_spans, self.source_word_spans,
+                                self.source_entities, self.source_texts)
+            self.get_word_spans(i, self.target_spans, self.target_word_spans,
+                                self.target_entities, self.target_texts)
+            self.target_word_highlight = self.target_word_spans
 
             output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
                         self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
@@ -280,10 +280,22 @@ class MainDialog(QWidget):
                         self.source_word_spans[self.cur_index], self.target_word_spans[self.cur_index]
                         ]
             self.cur_index += 1
-        print(f"load_csv_data source_entities out length: {len(self.source_entities)}",
-              file=sys.stderr)
-        print(f"load_csv_data source_entities: {self.source_entities}",
-              file=sys.stderr)
+        # change word hightlight to char highlight
+        self.target_highlight = change_word_to_char_highlight(
+            self.target_texts, self.target_word_highlight)
+
+    def get_word_spans(self, i, spans, word_spans, entities, texts):
+        for span_i in range(len(spans[i])):
+            span = spans[i][span_i]
+            result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(
+                        entities[i][span_i], texts[i], span[0], span[1])
+            if result:
+                word_spans[i].append([word_start_idx, word_end_idx])
+            else:
+                print(f"selectedText is NOT consecutive_words: "
+                      f"{entities[i][span_i]} | {texts[i]} | {span[0]} | {span[1]}",
+                      file=sys.stderr)
+                word_spans[i].append([0, 0])
 
     def change_span_style(self, text, spans): # spans为二维数组
         # print(spans)
@@ -340,6 +352,9 @@ class MainDialog(QWidget):
                     self.source_entities[self.cur_index].append(tc.selectedText())
                     self.source_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.source_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
+                    self.source_word_highlight[self.cur_index].append([word_start_idx, word_end_idx])
+                    self.source_highlight = change_word_to_char_highlight(
+                        self.source_texts, self.source_word_highlight)
                     display_text = ""
                     for i in range(len(self.source_entities[self.cur_index])):
                         display_text += self.source_entities[self.cur_index][i] + '  -  ' + str(self.source_word_spans[self.cur_index][i]) + '\n'
@@ -362,6 +377,9 @@ class MainDialog(QWidget):
                     self.target_entities[self.cur_index].append(tc.selectedText())
                     self.target_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.target_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
+                    self.target_word_highlight = self.target_word_spans
+                    self.target_highlight = change_word_to_char_highlight(
+                        self.target_texts, self.target_word_highlight)
                     display_text = ""
                     for i in range(len(self.target_entities[self.cur_index])):
                         display_text += self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i]) + '\n'
@@ -434,13 +452,10 @@ class MainDialog(QWidget):
             # print(tmp_source_text)
             self.ui.source.setTextCursor(QTextCursor())
             self.ui.source.setText(tmp_source_text)
-            self.ui.target.setText(old_data['target'])
-            #tmp_target_text = old_data['target']
-            #if len(self.target_highlight) > self.cur_index:
-                #tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
-            ## print(tmp_target_text)
-            #self.ui.target.setTextCursor(QTextCursor())
-            #self.ui.target.setText(tmp_target_text)
+            tmp_target_text = old_data['target']
+            if len(self.target_highlight) > self.cur_index:
+                tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
+            self.ui.target.setText(tmp_target_text)
             display_source_text = ""
             for i in range(len(old_data['source_entity'])):
                 display_source_text += old_data['source_entity'][i] + '  -  ' + str(old_data['source_word_span'][i]) + '\n'
@@ -508,11 +523,11 @@ class MainDialog(QWidget):
                     tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
                     self.ui.source.setTextCursor(QTextCursor())
                     self.ui.source.setText(tmp_source_text)
-                    self.ui.target.setText(old_data['target'])
-                    #tmp_target_text = old_data['target']
-                    ##tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
-                    #self.ui.target.setTextCursor(QTextCursor())
-                    #self.ui.target.setText(tmp_target_text)
+                    #self.ui.target.setText(old_data['target'])
+                    tmp_target_text = old_data['target']
+                    if len(self.target_highlight) > self.cur_index:
+                        tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
+                    self.ui.target.setText(tmp_target_text)
                     display_source_text = ""
                     for i in range(len(old_data['source_entity'])):
                         display_source_text += old_data['source_entity'][i] + '  -  ' + str(old_data['source_word_span'][i]) + '\n'
