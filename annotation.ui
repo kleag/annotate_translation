@@ -73,19 +73,14 @@
           </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="id"/>
+          <widget class="QSpinBox" name="id">
            <property name="sizePolicy">
-            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
              <horstretch>0</horstretch>
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
-           <property name="maximumSize">
-            <size>
-             <width>80</width>
-             <height>40</height>
-            </size>
-           </property>
+          </widget>
          </item>
          <item>
           <widget class="QLabel" name="label_2">

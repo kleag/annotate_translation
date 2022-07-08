@@ -12,12 +12,16 @@ from PyQt5.QtCore import Qt, QThread
 
 
 class WorkThread(QThread):
-    def __init__(self):
-        super(WorkThread,self).__init__()
+    def __init__(self, main_dialog):
+        super(WorkThread, self).__init__()
+        self.main_dialog = main_dialog
+
     def run(self):
         global output, output_filename
         if len(output) > 0:
-            output.to_csv(os.path.join('./output', output_filename), sep='\t', encoding='utf-8')
+            output[:self.main_dialog.last_set()].to_csv(os.path.join('./output',
+                                                                       output_filename),
+                                                          sep='\t', encoding='utf-8')
 
 
 def normalize_entity(entity):
@@ -115,6 +119,7 @@ class MainDialog(QWidget):
         self.ui.add_target.clicked.connect(self.add_target_entity)
         self.ui.clear.clicked.connect(self.clear_entity)
         self.ui.id.valueChanged.connect(self.move_to_item)
+        self.ui.target.textChanged.connect(self.target_changed)
 
         self.cwd = os.getcwd()  # Get current file path
 
@@ -128,15 +133,15 @@ class MainDialog(QWidget):
     def read_file(self):
         # init
         self.source_texts = []
-        self.target_texts = []
         self.source_highlight = []
         self.source_word_highlight = [] # 3 dimension，用于高亮需要本地化的实体
         self.source_entities = [] # 嵌套列表 - Nested List
+        self.source_spans = []
+        self.source_word_spans = []
+        self.target_texts = []
         self.target_highlight = []
         self.target_word_highlight = [] # 3 dimension，突出显示已经定位的实体
         self.target_entities = [] # 嵌套列表 - Nested List
-        self.source_spans = []
-        self.source_word_spans = []
         self.target_spans = []
         self.target_word_spans = []
         self.dialogue_id = []
@@ -148,8 +153,8 @@ class MainDialog(QWidget):
         global output # global variable
         output = pd.DataFrame(columns=['source', 'target', 'source_entity', 'target_entity', \
                             'source_span', 'target_span', 'dialogue_id', 'turn_id', 'utterance_type', \
-                            'source_word_span', 'target_word_span'])
-        self.write_output = WorkThread()
+                            'source_word_span', 'target_word_span'], dtype=object)
+        self.write_output = WorkThread(self)
 
         # choose file
         fileName_choose, filetype = QFileDialog.getOpenFileName(self, "choose file",
@@ -192,26 +197,41 @@ class MainDialog(QWidget):
                 self.utterance_type.append('user')
                 # Compute source highlight for user utterance from json data
                 # Target highlight will be computed when loading csv
-                if len(self.source_word_highlight) < len(self.source_texts):
-                    self.source_word_highlight.append([])
+                self.source_word_highlight.append([])
                 for k, v in turn['user_utterance'][1].items():
                     for kk, vv in v.items():
                         for vvv in vv:
                             self.source_word_highlight[-1].append(vvv)
+                self.source_entities.append([])
+                self.source_spans.append([])
+                self.source_word_spans.append([])
+
+                self.target_texts.append("")
+                self.target_entities.append([])
+                self.target_spans.append([])
+                self.target_word_spans.append([])
+                self.target_word_highlight.append([])
+
                 self.source_texts.append(turn['system_utterance'][0])
                 self.dialogue_id.append(dialogue['dialogue_id'])
                 self.turn_id.append(turn['turn_id'])
                 self.utterance_type.append('system')
                 # Compute source highlight for system utterance from json data
                 # Target highlight will be computed when loading csv
-                if len(self.source_word_highlight) < len(self.source_texts):
-                    self.source_word_highlight.append([])
+                self.source_word_highlight.append([])
                 for k, v in turn['system_utterance'][1].items():
                     for kk, vv in v.items():
                         for vvv in vv:
                             self.source_word_highlight[-1].append(vvv)
-        # change word hightlight to char highlight
-        self.source_highlight = change_word_to_char_highlight(self.source_texts, self.source_word_highlight)
+                self.source_entities.append([])
+                self.source_spans.append([])
+                self.source_word_spans.append([])
+
+                self.target_texts.append("")
+                self.target_entities.append([])
+                self.target_spans.append([])
+                self.target_word_spans.append([])
+                self.target_word_highlight.append([])
         # restore
         if os.path.exists(os.path.join('./output', output_filename)):
             QMessageBox.warning(self, 'warn', 'Some annotations have been recovered from %s in the output folder' % output_filename, QMessageBox.Yes)
@@ -219,37 +239,9 @@ class MainDialog(QWidget):
             self.load_csv_data(annotation)
 
             # 预添加空列表 - Pre-added empty lists
-            self.source_entities.append([])
-            self.target_entities.append([])
-            self.source_spans.append([])
-            self.source_word_spans.append([])
-            self.target_spans.append([])
-            self.target_word_spans.append([])
             # 显示标注文件的最后一条 - Display the last entry of the markup file
-            tmp_index = self.cur_index - 1
-            self.cur_index = self.cur_index-1
-
-            tmp_source_text = self.source_texts[tmp_index]
-            tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[tmp_index])
-            self.ui.source.setText(tmp_source_text)
-
-            #self.ui.target.setText(self.target_texts[tmp_index])
-            tmp_target_text = self.target_texts[tmp_index]
-            if len(self.target_highlight) > tmp_index:
-                tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[tmp_index])
-            self.ui.target.setText(tmp_target_text)
-
-            self.ui.source_entity.clear()
-            for i in range(len(self.source_entities[tmp_index])):
-                display_source_text = self.source_entities[tmp_index][i] + '  -  ' + str(self.source_word_spans[tmp_index][i])
-                self.ui.source_entity.addItem(display_source_text)
-            self.ui.target_entity.clear()
-            for i in range(len(self.target_entities[tmp_index])):
-                display_target_text = self.target_entities[tmp_index][i] + '  -  ' + str(self.target_word_spans[tmp_index][i])
-                self.ui.target_entity.addItem(display_target_text)
-            self.ui.id.setRange(1, len(self.source_texts))
-            self.ui.id.setSuffix(f"/ {str(len(self.source_texts))}")
-            self.ui.id.setValue(tmp_index+1)
+            self.cur_index = len(annotation)-1
+            print(f"After loading csv, cur_index is {self.cur_index}", file=sys.stderr)
         else:
             # 预添加空列表 - Pre-added empty lists
             self.source_entities.append([])
@@ -269,16 +261,18 @@ class MainDialog(QWidget):
             self.ui.id.setValue(self.cur_index+1)
 
     def load_csv_data(self, annotation):
+        #print(f"annotation: {annotation}", file=sys.stderr)
         for i in range(len(annotation)):
             item = annotation.iloc[i]
+            #print(item, file=sys.stderr)
             tmp_target_text = item['target'] if str(item['target']) != 'nan' else ''
-            self.target_texts.append(tmp_target_text)
-            self.source_entities.append(ast.literal_eval(item['source_entity']))
-            self.target_entities.append(ast.literal_eval(item['target_entity']))
-            self.source_spans.append(ast.literal_eval(item['source_span']))
-            self.target_spans.append(ast.literal_eval(item['target_span']))
-            self.source_word_spans.append([])
-            self.target_word_spans.append([])
+            self.source_entities[i] = ast.literal_eval(item['source_entity'])
+            self.source_spans[i] = ast.literal_eval(item['source_span'])
+            self.source_word_spans[i] = []
+            self.target_texts[i] = tmp_target_text
+            self.target_entities[i] = ast.literal_eval(item['target_entity'])
+            self.target_spans[i] = ast.literal_eval(item['target_span'])
+            self.target_word_spans[i] = []
             self.get_word_spans(i, self.source_spans, self.source_word_spans,
                                 self.source_entities, self.source_texts)
             self.get_word_spans(i, self.target_spans, self.target_word_spans,
@@ -295,6 +289,30 @@ class MainDialog(QWidget):
         # change word hightlight to char highlight
         self.target_highlight = change_word_to_char_highlight(
             self.target_texts, self.target_word_highlight)
+        for index in range(len(annotation), len(self.source_texts)):
+            output.loc[index] = [self.source_texts[index], self.target_texts[index], \
+            [], [], \
+            [], [], \
+            self.dialogue_id[index], self.turn_id[index], self.utterance_type[index], \
+            [], []
+            ]
+        #print(output, file=sys.stderr)
+        #print(self.source_texts, file=sys.stderr)
+        #print(self.target_texts, file=sys.stderr)
+
+    def last_set(self):
+        """
+        Return the index of the last entry with some data set
+        """
+        print(f"last_set searching {list(reversed(range(len(self.source_texts))))}", file=sys.stderr)
+        for i in reversed(range(len(self.source_texts))):
+            #print(f"last_set at {i} self.target_texts[i] ", file=sys.stderr)
+            if (self.target_texts[i] != "" or len(self.source_entities[i]) > 0
+                    or len(self.target_entities[i]) > 0):
+                print(f"last_set returns {i} {self.target_texts[i]} {len(self.source_entities[i])} {len(self.target_entities[i])}", file=sys.stderr)
+                return i+1
+        print(f"last_set returns default 0", file=sys.stderr)
+        return 0
 
     def get_word_spans(self, i, spans, word_spans, entities, texts):
         for span_i in range(len(spans[i])):
@@ -467,6 +485,7 @@ class MainDialog(QWidget):
         self.target_word_spans[self.cur_index] = []
 
     def next_item(self):
+        print(f"next_item {self.cur_index}", file=sys.stderr)
         if not self.cur_index < len(self.source_texts):
             self.box2.show()
         else:
