@@ -115,6 +115,13 @@ class MainDialog(QWidget):
         super(MainDialog, self).__init__(parent)
         self.ui = Ui_annotation.Ui_Form()
         self.ui.setupUi(self)
+        self.ui.read.clicked.connect(self.read_file)
+        self.ui.previous.clicked.connect(self.previous_item)
+        self.ui.reset.clicked.connect(self.reset_item)
+        self.ui.next.clicked.connect(self.next_item)
+        self.ui.add_source.clicked.connect(self.add_source_entity)
+        self.ui.add_target.clicked.connect(self.add_target_entity)
+        self.ui.clear.clicked.connect(self.clear_entity)
         self.cwd = os.getcwd()  # Get current file path
 
         self.box1 = QMessageBox(QMessageBox.Warning, 'warn', "It's already the first one")
@@ -247,7 +254,13 @@ class MainDialog(QWidget):
             self.ui.target_entity.setText(display_target_text)
             self.ui.id.setText(str(tmp_index+1)+' / '+str(len(self.source_texts)))
         else:
-            # display data
+            # 预添加空列表 - Pre-added empty lists
+            self.source_entities.append([])
+            self.target_entities.append([])
+            self.source_spans.append([])
+            self.source_word_spans.append([])
+            self.target_spans.append([])
+            self.target_word_spans.append([])            # display data
             tmp_source_text = self.source_texts[self.cur_index]
             tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
             self.ui.source.setText(tmp_source_text)
@@ -378,8 +391,6 @@ class MainDialog(QWidget):
                     self.target_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.target_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
                     self.target_word_highlight = self.target_word_spans
-                    self.target_highlight = change_word_to_char_highlight(
-                        self.target_texts, self.target_word_highlight)
                     display_text = ""
                     for i in range(len(self.target_entities[self.cur_index])):
                         display_text += self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i]) + '\n'
@@ -454,6 +465,7 @@ class MainDialog(QWidget):
             self.ui.source.setText(tmp_source_text)
             tmp_target_text = old_data['target']
             if len(self.target_highlight) > self.cur_index:
+                self.target_highlight = change_word_to_char_highlight(self.target_texts, self.target_word_highlight)
                 tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
             self.ui.target.setText(tmp_target_text)
             display_source_text = ""
@@ -526,6 +538,7 @@ class MainDialog(QWidget):
                     #self.ui.target.setText(old_data['target'])
                     tmp_target_text = old_data['target']
                     if len(self.target_highlight) > self.cur_index:
+                        self.target_highlight = change_word_to_char_highlight(self.target_texts, self.target_word_highlight)
                         tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
                     self.ui.target.setText(tmp_target_text)
                     display_source_text = ""
