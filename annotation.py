@@ -120,6 +120,7 @@ class MainDialog(QWidget):
         self.ui.clear.clicked.connect(self.clear_entity)
         self.ui.id.valueChanged.connect(self.move_to_item)
         self.ui.target.textChanged.connect(self.target_changed)
+        self.ui.target_entity.itemClicked.connect(self.target_item_clicked)
 
         self.cwd = os.getcwd()  # Get current file path
 
@@ -536,6 +537,14 @@ class MainDialog(QWidget):
                     self.source_word_spans.append([])
                     self.target_spans.append([])
                     self.target_word_spans.append([])
+
+    def target_item_clicked(self, target_item):
+        clicked_row = self.ui.target_entity.currentRow()
+        if clicked_row == self.ui.target_entity.count() - 1 and self.ui.target_entity.count() == self.ui.source_entity.count():
+            self.target_entities[self.cur_index].pop()
+            self.target_spans[self.cur_index].pop()
+            self.target_word_spans[self.cur_index].pop()
+            self.show_current_item()
 
 
 if __name__ == '__main__':
