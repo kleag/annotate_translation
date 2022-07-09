@@ -1,15 +1,15 @@
 import ast
 import ipdb
+import json
 import sys
 import os
-
-import Ui_annotation
-from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
-from PyQt5.QtGui import QTextCharFormat, QTextCursor
 import pandas as pd
-import json
+
+from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget, QMainWindow
+from PyQt5.QtGui import QTextCharFormat, QTextCursor
 from PyQt5.QtCore import Qt, QThread
 
+import Ui_annotation_window
 
 class WorkThread(QThread):
     def __init__(self, main_dialog):
@@ -67,7 +67,7 @@ def change_word_to_char_highlight(texts, word_highlight):
     return char_highlight
 
 
-class MainDialog(QWidget):
+class MainDialog(QMainWindow):
     """
     The main class, holding all application data. It is also the main window of the
     application.
@@ -108,10 +108,11 @@ class MainDialog(QWidget):
 
     def __init__(self, parent=None):
         super(MainDialog, self).__init__(parent)
-        self.ui = Ui_annotation.Ui_Form()
+        self.ui = Ui_annotation_window.Ui_MainWindow()
         self.ui.setupUi(self)
 
-        self.ui.read.clicked.connect(self.read_file)
+        #self.ui.read.clicked.connect(self.read_file)
+        self.ui.actionOpen.triggered.connect(self.read_file)
         self.ui.previous.clicked.connect(self.previous_item)
         self.ui.reset.clicked.connect(self.reset_item)
         self.ui.next.clicked.connect(self.next_item)
