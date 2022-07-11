@@ -132,6 +132,13 @@ class MainDialog(QMainWindow):
         self.box5 = QMessageBox(QMessageBox.Warning, 'warn', 'Please make true the selected text is consecutive words!')
         self.box6 = QMessageBox(QMessageBox.Warning, 'warn', 'Invalid utterance number.')
 
+    def confirm_delete_entity(self):
+        ret = QMessageBox.question(
+            self, 'Delete Entity',
+            "Do you really want to delete the clicked entiy pair?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        return ret == QMessageBox.Yes
+
     def read_file(self):
         # init
         self.source_texts = []
@@ -547,20 +554,33 @@ class MainDialog(QMainWindow):
 
     def target_item_clicked(self, target_item):
         clicked_row = self.ui.target_entity.currentRow()
-        if clicked_row == self.ui.target_entity.count() - 1 and self.ui.target_entity.count() == self.ui.source_entity.count():
-            self.target_entities[self.cur_index].pop()
-            self.target_spans[self.cur_index].pop()
-            self.target_word_spans[self.cur_index].pop()
-            self.show_current_item()
+        return self.delete_entity_pair(clicked_row)
+        #if clicked_row == self.ui.target_entity.count() - 1 and self.ui.target_entity.count() == self.ui.source_entity.count():
+            #self.target_entities[self.cur_index].pop()
+            #self.target_spans[self.cur_index].pop()
+            #self.target_word_spans[self.cur_index].pop()
+            #self.show_current_item()
 
     def source_item_clicked(self, source_item):
         clicked_row = self.ui.source_entity.currentRow()
-        if clicked_row == self.ui.source_entity.count() - 1 and self.ui.source_entity.count() > self.ui.target_entity.count():
-            self.source_entities[self.cur_index].pop()
-            self.source_spans[self.cur_index].pop()
-            self.source_word_spans[self.cur_index].pop()
-            self.show_current_item()
+        return self.delete_entity_pair(clicked_row)
+        #if clicked_row == self.ui.source_entity.count() - 1 and self.ui.source_entity.count() > self.ui.target_entity.count():
+            #self.source_entities[self.cur_index].pop()
+            #self.source_spans[self.cur_index].pop()
+            #self.source_word_spans[self.cur_index].pop()
+            #self.show_current_item()
 
+    def delete_entity_pair(self, row):
+        if self.confirm_delete_entity():
+            if row < len(self.source_entities[self.cur_index]):
+                del self.source_entities[self.cur_index][row]
+                del self.source_spans[self.cur_index][row]
+                del self.source_word_spans[self.cur_index][row]
+            if row < len(self.target_entities[self.cur_index]):
+                del self.target_entities[self.cur_index][row]
+                del self.target_spans[self.cur_index][row]
+                del self.target_word_spans[self.cur_index][row]
+            self.show_current_item()
 
 if __name__ == '__main__':
     myapp = QApplication(sys.argv)
