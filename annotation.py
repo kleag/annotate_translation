@@ -3,30 +3,25 @@ import ipdb
 import sys
 import os
 
-import Ui_annotation
-from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget
+import Ui_annotation_window
+from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox, QWidget, QMainWindow
 from PyQt5.QtGui import QTextCharFormat, QTextCursor
 import pandas as pd
 import json
 from PyQt5.QtCore import Qt, QThread
 
-'''
-self.read.clicked.connect(Form.read_file)
-self.previous.clicked.connect(Form.previous_item)
-self.reset.clicked.connect(Form.reset_item)
-self.next.clicked.connect(Form.next_item)
-self.add_source.clicked.connect(Form.add_source_entity)
-self.add_target.clicked.connect(Form.add_target_entity)
-self.clear.clicked.connect(Form.clear_entity)
-'''
 
 class WorkThread(QThread):
-    def __init__(self):
-        super(WorkThread,self).__init__()
+    def __init__(self, main_dialog):
+        super(WorkThread, self).__init__()
+        self.main_dialog = main_dialog
+
     def run(self):
         global output, output_filename
         if len(output) > 0:
-            output.to_csv(os.path.join('./output', output_filename), sep='\t', encoding='utf-8')
+            output[:self.main_dialog.last_set()].to_csv(os.path.join('./output',
+                                                                       output_filename),
+                                                          sep='\t', encoding='utf-8')
 
 
 def normalize_entity(entity):
@@ -72,7 +67,7 @@ def change_word_to_char_highlight(texts, word_highlight):
     return char_highlight
 
 
-class MainDialog(QWidget):
+class MainDialog(QMainWindow):
     """
     The main class, holding all application data. It is also the main window of the
     application.
@@ -113,15 +108,21 @@ class MainDialog(QWidget):
 
     def __init__(self, parent=None):
         super(MainDialog, self).__init__(parent)
-        self.ui = Ui_annotation.Ui_Form()
+        self.ui = Ui_annotation_window.Ui_MainWindow()
         self.ui.setupUi(self)
-        self.ui.read.clicked.connect(self.read_file)
+
+        self.ui.actionOpen.triggered.connect(self.read_file)
         self.ui.previous.clicked.connect(self.previous_item)
         self.ui.reset.clicked.connect(self.reset_item)
         self.ui.next.clicked.connect(self.next_item)
         self.ui.add_source.clicked.connect(self.add_source_entity)
         self.ui.add_target.clicked.connect(self.add_target_entity)
         self.ui.clear.clicked.connect(self.clear_entity)
+        self.ui.id.valueChanged.connect(self.move_to_item)
+        self.ui.target.textChanged.connect(self.target_changed)
+        self.ui.target_entity.itemClicked.connect(self.target_item_clicked)
+        self.ui.source_entity.itemClicked.connect(self.source_item_clicked)
+
         self.cwd = os.getcwd()  # Get current file path
 
         self.box1 = QMessageBox(QMessageBox.Warning, 'warn', "It's already the first one")
@@ -129,19 +130,27 @@ class MainDialog(QWidget):
         self.box3 = QMessageBox(QMessageBox.Warning, 'warn', 'Please add a Source entity first')
         self.box4 = QMessageBox(QMessageBox.Warning, 'warn', 'Please add an Target entity first')
         self.box5 = QMessageBox(QMessageBox.Warning, 'warn', 'Please make true the selected text is consecutive words!')
+        self.box6 = QMessageBox(QMessageBox.Warning, 'warn', 'Invalid utterance number.')
+
+    def confirm_delete_entity(self):
+        ret = QMessageBox.question(
+            self, 'Delete Entity',
+            "Do you really want to delete the clicked entiy pair?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        return ret == QMessageBox.Yes
 
     def read_file(self):
         # init
         self.source_texts = []
-        self.target_texts = []
         self.source_highlight = []
         self.source_word_highlight = [] # 3 dimension，用于高亮需要本地化的实体
         self.source_entities = [] # 嵌套列表 - Nested List
+        self.source_spans = []
+        self.source_word_spans = []
+        self.target_texts = []
         self.target_highlight = []
         self.target_word_highlight = [] # 3 dimension，突出显示已经定位的实体
         self.target_entities = [] # 嵌套列表 - Nested List
-        self.source_spans = []
-        self.source_word_spans = []
         self.target_spans = []
         self.target_word_spans = []
         self.dialogue_id = []
@@ -153,8 +162,8 @@ class MainDialog(QWidget):
         global output # global variable
         output = pd.DataFrame(columns=['source', 'target', 'source_entity', 'target_entity', \
                             'source_span', 'target_span', 'dialogue_id', 'turn_id', 'utterance_type', \
-                            'source_word_span', 'target_word_span'])
-        self.write_output = WorkThread()
+                            'source_word_span', 'target_word_span'], dtype=object)
+        self.write_output = WorkThread(self)
 
         # choose file
         fileName_choose, filetype = QFileDialog.getOpenFileName(self, "choose file",
@@ -197,26 +206,41 @@ class MainDialog(QWidget):
                 self.utterance_type.append('user')
                 # Compute source highlight for user utterance from json data
                 # Target highlight will be computed when loading csv
-                if len(self.source_word_highlight) < len(self.source_texts):
-                    self.source_word_highlight.append([])
+                self.source_word_highlight.append([])
                 for k, v in turn['user_utterance'][1].items():
                     for kk, vv in v.items():
                         for vvv in vv:
                             self.source_word_highlight[-1].append(vvv)
+                self.source_entities.append([])
+                self.source_spans.append([])
+                self.source_word_spans.append([])
+
+                self.target_texts.append("")
+                self.target_entities.append([])
+                self.target_spans.append([])
+                self.target_word_spans.append([])
+                self.target_word_highlight.append([])
+
                 self.source_texts.append(turn['system_utterance'][0])
                 self.dialogue_id.append(dialogue['dialogue_id'])
                 self.turn_id.append(turn['turn_id'])
                 self.utterance_type.append('system')
                 # Compute source highlight for system utterance from json data
                 # Target highlight will be computed when loading csv
-                if len(self.source_word_highlight) < len(self.source_texts):
-                    self.source_word_highlight.append([])
+                self.source_word_highlight.append([])
                 for k, v in turn['system_utterance'][1].items():
                     for kk, vv in v.items():
                         for vvv in vv:
                             self.source_word_highlight[-1].append(vvv)
-        # change word hightlight to char highlight
-        self.source_highlight = change_word_to_char_highlight(self.source_texts, self.source_word_highlight)
+                self.source_entities.append([])
+                self.source_spans.append([])
+                self.source_word_spans.append([])
+
+                self.target_texts.append("")
+                self.target_entities.append([])
+                self.target_spans.append([])
+                self.target_word_spans.append([])
+                self.target_word_highlight.append([])
         # restore
         if os.path.exists(os.path.join('./output', output_filename)):
             QMessageBox.warning(self, 'warn', 'Some annotations have been recovered from %s in the output folder' % output_filename, QMessageBox.Yes)
@@ -224,62 +248,44 @@ class MainDialog(QWidget):
             self.load_csv_data(annotation)
 
             # 预添加空列表 - Pre-added empty lists
-            self.source_entities.append([])
-            self.target_entities.append([])
-            self.source_spans.append([])
-            self.source_word_spans.append([])
-            self.target_spans.append([])
-            self.target_word_spans.append([])
             # 显示标注文件的最后一条 - Display the last entry of the markup file
-            tmp_index = self.cur_index - 1
-            self.cur_index = self.cur_index-1
-
-            tmp_source_text = self.source_texts[tmp_index]
-            tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[tmp_index])
-            self.ui.source.setText(tmp_source_text)
-
-            #self.ui.target.setText(self.target_texts[tmp_index])
-            tmp_target_text = self.target_texts[tmp_index]
-            if len(self.target_highlight) > tmp_index:
-                tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[tmp_index])
-            self.ui.target.setText(tmp_target_text)
-
-            display_source_text = ""
-            for i in range(len(self.source_entities[tmp_index])):
-                display_source_text += self.source_entities[tmp_index][i] + '  -  ' + str(self.source_word_spans[tmp_index][i]) + '\n'
-            self.ui.source_entity.setText(display_source_text)
-            display_target_text = ""
-            for i in range(len(self.target_entities[tmp_index])):
-                display_target_text += self.target_entities[tmp_index][i] + '  -  ' + str(self.target_word_spans[tmp_index][i]) + '\n'
-            self.ui.target_entity.setText(display_target_text)
-            self.ui.id.setText(str(tmp_index+1)+' / '+str(len(self.source_texts)))
+            self.cur_index = len(annotation)-1
         else:
-            # 预添加空列表 - Pre-added empty lists
-            self.source_entities.append([])
-            self.target_entities.append([])
-            self.source_spans.append([])
-            self.source_word_spans.append([])
-            self.target_spans.append([])
-            self.target_word_spans.append([])            # display data
-            tmp_source_text = self.source_texts[self.cur_index]
-            tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
-            self.ui.source.setText(tmp_source_text)
-            self.ui.target.clear()
-            self.ui.source_entity.clear()
-            self.ui.target_entity.clear()
-            self.ui.id.setText(str(self.cur_index+1)+' / '+str(len(self.source_texts)))
+            for index in range(len(self.source_texts)):
+                output.loc[index] = [self.source_texts[index], self.target_texts[index], \
+                [], [], \
+                [], [], \
+                self.dialogue_id[index], self.turn_id[index], self.utterance_type[index], \
+                [], []
+                ]
+        self.ui.id.disconnect()
+        self.ui.id.setRange(1, len(self.source_texts))
+        self.ui.id.setSuffix(f"/ {str(len(self.source_texts))}")
+        # change word hightlight to char highlight
+        self.source_highlight = change_word_to_char_highlight(self.source_texts,
+                                                              self.source_word_highlight)
+        self.target_highlight = change_word_to_char_highlight(self.target_texts,
+                                                              self.target_word_highlight)
+
+        #print(f"After loading, cur_index is {self.cur_index}; {self.source_texts}; {self.target_texts}", file=sys.stderr)
+        if self.cur_index < 0:
+            self.cur_index = 0
+        self.ui.id.setValue(self.cur_index+1)
+        self.move_to_item(self.cur_index+1)
+        self.ui.id.valueChanged.connect(self.move_to_item)
 
     def load_csv_data(self, annotation):
         for i in range(len(annotation)):
             item = annotation.iloc[i]
+            #print(item, file=sys.stderr)
             tmp_target_text = item['target'] if str(item['target']) != 'nan' else ''
-            self.target_texts.append(tmp_target_text)
-            self.source_entities.append(ast.literal_eval(item['source_entity']))
-            self.target_entities.append(ast.literal_eval(item['target_entity']))
-            self.source_spans.append(ast.literal_eval(item['source_span']))
-            self.target_spans.append(ast.literal_eval(item['target_span']))
-            self.source_word_spans.append([])
-            self.target_word_spans.append([])
+            self.source_entities[i] = ast.literal_eval(item['source_entity'])
+            self.source_spans[i] = ast.literal_eval(item['source_span'])
+            self.source_word_spans[i] = []
+            self.target_texts[i] = tmp_target_text
+            self.target_entities[i] = ast.literal_eval(item['target_entity'])
+            self.target_spans[i] = ast.literal_eval(item['target_span'])
+            self.target_word_spans[i] = []
             self.get_word_spans(i, self.source_spans, self.source_word_spans,
                                 self.source_entities, self.source_texts)
             self.get_word_spans(i, self.target_spans, self.target_word_spans,
@@ -296,6 +302,30 @@ class MainDialog(QWidget):
         # change word hightlight to char highlight
         self.target_highlight = change_word_to_char_highlight(
             self.target_texts, self.target_word_highlight)
+        for index in range(len(annotation), len(self.source_texts)):
+            output.loc[index] = [self.source_texts[index], self.target_texts[index], \
+            [], [], \
+            [], [], \
+            self.dialogue_id[index], self.turn_id[index], self.utterance_type[index], \
+            [], []
+            ]
+        #print(output, file=sys.stderr)
+        #print(self.source_texts, file=sys.stderr)
+        #print(self.target_texts, file=sys.stderr)
+
+    def last_set(self):
+        """
+        Return the index of the last entry with some data set
+        """
+        #print(f"last_set searching {list(reversed(range(len(self.source_texts))))}", file=sys.stderr)
+        for i in reversed(range(len(self.source_texts))):
+            #print(f"last_set at {i} self.target_texts[i] ", file=sys.stderr)
+            if (self.target_texts[i] != "" or len(self.source_entities[i]) > 0
+                    or len(self.target_entities[i]) > 0):
+                #print(f"last_set returns {i} {self.target_texts[i]} {len(self.source_entities[i])} {len(self.target_entities[i])}", file=sys.stderr)
+                return i+1
+        #print(f"last_set returns default 0", file=sys.stderr)
+        return 0
 
     def get_word_spans(self, i, spans, word_spans, entities, texts):
         for span_i in range(len(spans[i])):
@@ -368,10 +398,10 @@ class MainDialog(QWidget):
                     self.source_word_highlight[self.cur_index].append([word_start_idx, word_end_idx])
                     self.source_highlight = change_word_to_char_highlight(
                         self.source_texts, self.source_word_highlight)
-                    display_text = ""
+                    self.ui.source_entity.clear()
                     for i in range(len(self.source_entities[self.cur_index])):
-                        display_text += self.source_entities[self.cur_index][i] + '  -  ' + str(self.source_word_spans[self.cur_index][i]) + '\n'
-                    self.ui.source_entity.setText(display_text)
+                        display_text = self.source_entities[self.cur_index][i] + '  -  ' + str(self.source_word_spans[self.cur_index][i]) + '\n'
+                        self.ui.source_entity.addItem(display_text)
                 else:
                     self.box5.show()
         else:
@@ -391,10 +421,12 @@ class MainDialog(QWidget):
                     self.target_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.target_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
                     self.target_word_highlight = self.target_word_spans
-                    display_text = ""
+                    self.target_highlight = change_word_to_char_highlight(
+                        self.target_texts, self.target_word_highlight)
+                    self.ui.target_entity.clear()
                     for i in range(len(self.target_entities[self.cur_index])):
-                        display_text += self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i]) + '\n'
-                    self.ui.target_entity.setText(display_text)
+                        display_text = self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i])
+                        self.ui.target_entity.addItem(display_text)
                 else:
                     self.box5.show()
         else:
@@ -419,63 +451,26 @@ class MainDialog(QWidget):
             self.ui.source_entity.clear()
             self.ui.target_entity.clear()
 
-
     def previous_item(self):
         if self.cur_index == 0:
             self.box1.show()
         else:
-            # save the current item
-            if self.cur_index == len(self.target_texts):
-                self.target_texts.append(self.ui.target.toPlainText())
-            else:
-                self.target_texts[self.cur_index] = self.ui.target.toPlainText()
+            self.ui.id.setValue(self.cur_index)
 
-            if self.ui.source_entity.toPlainText() != '':
-                # try:
-                #     assert len(self.target_texts) == len(self.source_entities) \
-                #             == len(self.target_entities)
-                # except AssertionError:
-                #     print(len(self.target_texts), len(self.source_entities), len(self.target_entities))
-                #     raise AssertionError
-                output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
-                            self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
-                            self.source_spans[self.cur_index], self.target_spans[self.cur_index], \
-                            self.dialogue_id[self.cur_index], self.turn_id[self.cur_index], self.utterance_type[self.cur_index], \
-                            self.source_word_spans[self.cur_index], self.target_word_spans[self.cur_index]
-                            ]
-            else:
-                output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
-                            [], [], \
-                            [], [], \
-                            self.dialogue_id[self.cur_index], self.turn_id[self.cur_index], self.utterance_type[self.cur_index], \
-                            [], []
-                            ]
+    def move_to_item(self, index):
+        #print(f"move_to_item {index}", file=sys.stderr)
+        if index < 1 or index > len(self.source_texts):
+            self.box6.show()
+            return
 
-            self.write_output.start()
-            # display old data
-            self.cur_index -= 1
-            self.ui.id.setText(str(self.cur_index+1)+' / '+str(len(self.source_texts)))
-            old_data = output.loc[self.cur_index]
-            self.ui.source.setTextColor(Qt.black)
-            self.ui.target.setTextColor(Qt.black)
-            tmp_source_text = old_data['source']
-            tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
-            # print(tmp_source_text)
-            self.ui.source.setTextCursor(QTextCursor())
-            self.ui.source.setText(tmp_source_text)
-            tmp_target_text = old_data['target']
-            if len(self.target_highlight) > self.cur_index:
-                self.target_highlight = change_word_to_char_highlight(self.target_texts, self.target_word_highlight)
-                tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
-            self.ui.target.setText(tmp_target_text)
-            display_source_text = ""
-            for i in range(len(old_data['source_entity'])):
-                display_source_text += old_data['source_entity'][i] + '  -  ' + str(old_data['source_word_span'][i]) + '\n'
-            self.ui.source_entity.setText(display_source_text)
-            display_target_text = ""
-            for i in range(len(old_data['target_entity'])):
-                display_target_text += old_data['target_entity'][i] + '  -  ' + str(old_data['target_word_span'][i]) + '\n'
-            self.ui.target_entity.setText(display_target_text)
+        # save the current item
+        self.save_current_item()
+        # display old data
+        self.cur_index = index - 1
+        self.show_current_item()
+        #print(output, file=sys.stderr)
+        #print(self.source_texts, file=sys.stderr)
+        #print(self.target_texts, file=sys.stderr)
 
     def reset_item(self):
         self.ui.source.setTextColor(Qt.black)
@@ -495,77 +490,97 @@ class MainDialog(QWidget):
         self.target_word_spans[self.cur_index] = []
 
     def next_item(self):
+        #print(f"next_item {self.cur_index}", file=sys.stderr)
         if not self.cur_index < len(self.source_texts):
             self.box2.show()
         else:
-            # save
-            if self.cur_index == len(self.target_texts):
-                self.target_texts.append(self.ui.target.toPlainText())
-            else:
-                self.target_texts[self.cur_index] = self.ui.target.toPlainText()
-
-            if self.ui.source_entity.toPlainText() != '':
-                output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
-                            self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
-                            self.source_spans[self.cur_index], self.target_spans[self.cur_index], \
-                            self.dialogue_id[self.cur_index], self.turn_id[self.cur_index], self.utterance_type[self.cur_index], \
-                            self.source_word_spans[self.cur_index], self.target_word_spans[self.cur_index]
-                            ]
-            else:
-                output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
-                            [], [], \
-                            [], [], \
-                            self.dialogue_id[self.cur_index], self.turn_id[self.cur_index], self.utterance_type[self.cur_index], \
-                            [], []
-                            ]
-            self.write_output.start()
+            self.save_current_item()
 
             # display new data
             if not self.cur_index+1 < len(self.source_texts):
                 self.box2.show()
             else:
-                self.cur_index += 1
-                self.ui.id.setText(str(self.cur_index+1)+' / '+str(len(self.source_texts)))
-                if self.cur_index < len(output):
-                    # display old data
-                    old_data = output.loc[self.cur_index]
-                    self.ui.source.setTextColor(Qt.black)
-                    self.ui.target.setTextColor(Qt.black)
-                    tmp_source_text = old_data['source']
-                    tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
-                    self.ui.source.setTextCursor(QTextCursor())
-                    self.ui.source.setText(tmp_source_text)
-                    #self.ui.target.setText(old_data['target'])
-                    tmp_target_text = old_data['target']
-                    if len(self.target_highlight) > self.cur_index:
-                        self.target_highlight = change_word_to_char_highlight(self.target_texts, self.target_word_highlight)
-                        tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
-                    self.ui.target.setText(tmp_target_text)
-                    display_source_text = ""
-                    for i in range(len(old_data['source_entity'])):
-                        display_source_text += old_data['source_entity'][i] + '  -  ' + str(old_data['source_word_span'][i]) + '\n'
-                    self.ui.source_entity.setText(display_source_text)
-                    display_target_text = ""
-                    for i in range(len(old_data['target_entity'])):
-                        display_target_text += old_data['target_entity'][i] + '  -  ' + str(old_data['target_word_span'][i]) + '\n'
-                    self.ui.target_entity.setText(display_target_text)
-                else:
-                    self.ui.source.setTextColor(Qt.black)
-                    tmp_source_text = self.source_texts[self.cur_index]
-                    tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
-                    self.ui.source.setTextCursor(QTextCursor())
-                    self.ui.source.setText(tmp_source_text)
-                    self.ui.target.setTextColor(Qt.black)
-                    self.ui.target.clear()
-                    self.ui.source_entity.clear()
-                    self.ui.target_entity.clear()
-                    self.source_entities.append([])
-                    self.target_entities.append([])
-                    self.source_spans.append([])
-                    self.source_word_spans.append([])
-                    self.target_spans.append([])
-                    self.target_word_spans.append([])
+                self.ui.id.setValue(self.cur_index+1+1)
 
+    def save_current_item(self):
+        # save
+        #print(f"save_current_item {self.cur_index}: {self.target_texts[self.cur_index]}", file=sys.stderr)
+        global output
+        output.loc[self.cur_index] = [self.source_texts[self.cur_index], self.target_texts[self.cur_index], \
+                    self.source_entities[self.cur_index], self.target_entities[self.cur_index], \
+                    self.source_spans[self.cur_index], self.target_spans[self.cur_index], \
+                    self.dialogue_id[self.cur_index], self.turn_id[self.cur_index], self.utterance_type[self.cur_index], \
+                    self.source_word_spans[self.cur_index], self.target_word_spans[self.cur_index]
+                    ]
+        self.write_output.start()
+
+    def show_current_item(self):
+        """
+        Show current item.
+        """
+        #print(f"show_current_item {self.cur_index}", file=sys.stderr)
+        if self.cur_index < 0 or self.cur_index >= len(self.source_texts):
+            self.box6.show()
+            return
+        global output
+        # display old data
+        old_data = output.loc[self.cur_index]
+        #print(f"show_current_item {old_data}", file=sys.stderr)
+        self.ui.source.setTextColor(Qt.black)
+        tmp_source_text = old_data['source']
+        tmp_source_text = self.change_span_style(tmp_source_text, self.source_highlight[self.cur_index])
+        self.ui.source.setTextCursor(QTextCursor())
+        self.ui.source.setText(tmp_source_text)
+
+        tmp_target_text = old_data['target']
+        tmp_target_text = self.change_span_style(tmp_target_text, self.target_highlight[self.cur_index])
+        self.ui.target.setTextColor(Qt.black)
+        self.ui.target.setText(tmp_target_text)
+
+        self.ui.source_entity.clear()
+        for i in range(len(old_data['source_entity'])):
+            display_source_text = old_data['source_entity'][i] + '  -  ' + str(old_data['source_word_span'][i])
+            self.ui.source_entity.addItem(display_source_text)
+        self.ui.target_entity.clear()
+        for i in range(len(old_data['target_entity'])):
+            display_target_text = old_data['target_entity'][i] + '  -  ' + str(old_data['target_word_span'][i])
+            self.ui.target_entity.addItem(display_target_text)
+
+    def target_changed(self):
+        #print(f"target_changed {self.ui.target.toPlainText()}", file=sys.stderr)
+        self.target_texts[self.cur_index] = self.ui.target.toPlainText()
+        global output
+        output.loc[self.cur_index]['target'] = self.target_texts[self.cur_index]
+
+    def target_item_clicked(self, target_item):
+        clicked_row = self.ui.target_entity.currentRow()
+        return self.delete_entity_pair(clicked_row)
+        #if clicked_row == self.ui.target_entity.count() - 1 and self.ui.target_entity.count() == self.ui.source_entity.count():
+            #self.target_entities[self.cur_index].pop()
+            #self.target_spans[self.cur_index].pop()
+            #self.target_word_spans[self.cur_index].pop()
+            #self.show_current_item()
+
+    def source_item_clicked(self, source_item):
+        clicked_row = self.ui.source_entity.currentRow()
+        return self.delete_entity_pair(clicked_row)
+        #if clicked_row == self.ui.source_entity.count() - 1 and self.ui.source_entity.count() > self.ui.target_entity.count():
+            #self.source_entities[self.cur_index].pop()
+            #self.source_spans[self.cur_index].pop()
+            #self.source_word_spans[self.cur_index].pop()
+            #self.show_current_item()
+
+    def delete_entity_pair(self, row):
+        if self.confirm_delete_entity():
+            if row < len(self.source_entities[self.cur_index]):
+                del self.source_entities[self.cur_index][row]
+                del self.source_spans[self.cur_index][row]
+                del self.source_word_spans[self.cur_index][row]
+            if row < len(self.target_entities[self.cur_index]):
+                del self.target_entities[self.cur_index][row]
+                del self.target_spans[self.cur_index][row]
+                del self.target_word_spans[self.cur_index][row]
+            self.show_current_item()
 
 if __name__ == '__main__':
     myapp = QApplication(sys.argv)
