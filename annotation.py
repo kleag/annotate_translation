@@ -384,7 +384,7 @@ class MainDialog(QMainWindow):
     def add_source_entity(self):
         if len(self.target_entities[self.cur_index]) == len(self.source_entities[self.cur_index]):
             tc = self.ui.source.textCursor()
-            if tc.selectedText() != '':
+            if tc.selectedText().strip() != '':
                 result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(),
                                                     self.source_texts[self.cur_index], tc.selectionStart(), tc.selectionEnd())
                 if result:
@@ -392,7 +392,7 @@ class MainDialog(QMainWindow):
                     color_format = QTextCharFormat(tc.charFormat())
                     color_format.setForeground(Qt.red)
                     tc.mergeCharFormat(color_format)
-                    self.source_entities[self.cur_index].append(tc.selectedText())
+                    self.source_entities[self.cur_index].append(tc.selectedText().strip())
                     self.source_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.source_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
                     self.source_word_highlight[self.cur_index].append([word_start_idx, word_end_idx])
@@ -410,14 +410,14 @@ class MainDialog(QMainWindow):
     def add_target_entity(self):
         if len(self.target_entities[self.cur_index]) == len(self.source_entities[self.cur_index])-1:
             tc = self.ui.target.textCursor()
-            if tc.selectedText() != '':
+            if tc.selectedText().strip() != '':
                 result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(),
                                                     self.ui.target.toPlainText(), tc.selectionStart(), tc.selectionEnd())
                 if result:
                     color_format = QTextCharFormat(tc.charFormat())
                     color_format.setForeground(Qt.red)
                     tc.mergeCharFormat(color_format)
-                    self.target_entities[self.cur_index].append(tc.selectedText())
+                    self.target_entities[self.cur_index].append(tc.selectedText().strip())
                     self.target_spans[self.cur_index].append([char_start_idx, char_end_idx])
                     self.target_word_spans[self.cur_index].append([word_start_idx, word_end_idx])
                     self.target_word_highlight = self.target_word_spans
