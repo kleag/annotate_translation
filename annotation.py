@@ -19,8 +19,13 @@ class WorkThread(QThread):
     def run(self):
         global output, output_filename
         if len(output) > 0:
-            output[:self.main_dialog.last_set()].to_csv(os.path.join('./output',
+            try:
+                output[:self.main_dialog.last_set()].to_csv(os.path.join('./output',
                                                                        output_filename),
+                                                          sep='\t', encoding='utf-8')
+            finally:
+                output[:self.main_dialog.last_set()].to_csv(os.path.join('./output',
+                                                                       output_filename+'.bak'),
                                                           sep='\t', encoding='utf-8')
 
 
@@ -136,6 +141,12 @@ class MainDialog(QMainWindow):
         ret = QMessageBox.question(
             self, 'Delete Entity',
             "Do you really want to delete the clicked entiy pair?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
+        return ret == QMessageBox.Yes
+    def confirm_replace_entity(self):
+        ret = QMessageBox.question(
+            self, 'Replace Entity',
+            "Do you really want to replace the clicked entiy with the selected text in target?",
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         return ret == QMessageBox.Yes
 
@@ -427,6 +438,7 @@ class MainDialog(QMainWindow):
                     for i in range(len(self.target_entities[self.cur_index])):
                         display_text = self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i])
                         self.ui.target_entity.addItem(display_text)
+                    self.ui.target.setTextCursor(QTextCursor(self.ui.target.document()))
                 else:
                     self.box5.show()
         else:
@@ -554,7 +566,29 @@ class MainDialog(QMainWindow):
 
     def target_item_clicked(self, target_item):
         clicked_row = self.ui.target_entity.currentRow()
-        return self.delete_entity_pair(clicked_row)
+        tc = self.ui.target.textCursor()
+        if tc.selectedText().strip() != '':
+            # replace the item with the selected text in target
+            result, word_start_idx, word_end_idx, char_start_idx, char_end_idx = selectedText_is_consecutive_words(tc.selectedText(),
+                                                    self.ui.target.toPlainText(), tc.selectionStart(), tc.selectionEnd())
+            if result and self.confirm_replace_entity():
+                color_format = QTextCharFormat(tc.charFormat())
+                color_format.setForeground(Qt.red)
+                tc.mergeCharFormat(color_format)
+                self.target_entities[self.cur_index][clicked_row] = tc.selectedText().strip()
+                self.target_spans[self.cur_index][clicked_row] = [char_start_idx, char_end_idx]
+                self.target_word_spans[self.cur_index][clicked_row] = [word_start_idx, word_end_idx]
+                self.target_word_highlight = self.target_word_spans
+                self.target_highlight = change_word_to_char_highlight(
+                    self.target_texts, self.target_word_highlight)
+                self.ui.target_entity.clear()
+                for i in range(len(self.target_entities[self.cur_index])):
+                    display_text = self.target_entities[self.cur_index][i] + '  -  ' + str(self.target_word_spans[self.cur_index][i])
+                    self.ui.target_entity.addItem(display_text)
+                self.ui.target.setTextCursor(QTextCursor(self.ui.target.document()))
+
+        else:
+            return self.delete_entity_pair(clicked_row)
         #if clicked_row == self.ui.target_entity.count() - 1 and self.ui.target_entity.count() == self.ui.source_entity.count():
             #self.target_entities[self.cur_index].pop()
             #self.target_spans[self.cur_index].pop()
