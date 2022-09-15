@@ -51,7 +51,8 @@ def selectedText_is_consecutive_words(select_text, origin_text, char_start_idx, 
     select_words = [normalize_entity(e) for e in select_text_2.lower().split(' ')]
     # Get all possible consecutive words whose length is equal to the length of select_words
     for i in range(len(words) - len(select_words) + 1):
-        if words[i:i+len(select_words)] == select_words:
+        if words[i:i+len(select_words)] == select_words or \
+            [words[i].split("'", 1)[1]] + words[i+1:i+len(select_words)] == select_words:
             return True, i, i+len(select_words), char_start_idx, char_end_idx
     return False, 0, 0, 0, 0
 
