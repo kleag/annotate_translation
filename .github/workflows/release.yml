@@ -36,6 +36,9 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: ubuntu-latest
+            CMD_BUILD: pyinstaller -F -w src/annotation.py
+            OUT_FILE_NAME: annotation.linux
           - os: macos-latest
             TARGET: macos
             CMD_BUILD: >
