@@ -1,4 +1,4 @@
 pandas==1.2.3
 PyQt5==5.15.7
 ipdb
-pyinstaller=3.6
+pyinstaller
