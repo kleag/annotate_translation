@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(
-    ['src/annotation.py'],
+    ['annotation.py'],
     pathex=[],
     binaries=[],
     datas=[],
