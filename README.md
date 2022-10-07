@@ -2,6 +2,11 @@
 # annotate_translation
 A text annotation tool for translating and annotating entity alignments
 
+## Installation
+
+Download the binary for your OS from [here](https://github.com/kleag/annotate_translation/releases/tag/v0.1.5). 
+Currently, Linux, macOS and Windows are supported.
+
 ## Usage
 Pip install requirements:
 ```
